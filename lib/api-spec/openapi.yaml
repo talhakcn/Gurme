@@ -1,0 +1,1678 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: Gurme API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: search
+    description: Venue search and AI analysis
+  - name: feedback
+    description: Anonymous venue feedback and check-ins
+  - name: admin
+    description: Authorized venue report moderation
+  - name: gurme
+    description: User-curated food and drink lists
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /autocomplete:
+    get:
+      operationId: autocompleteLocations
+      tags: [search]
+      summary: Suggest cities and districts
+      description: Google Places Autocomplete; returns at most 5 suggestions. Inputs shorter than 2 characters return an empty list.
+      parameters:
+        - name: input
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        "200":
+          description: Suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AutocompleteResponse"
+  /search:
+    post:
+      operationId: searchVenues
+      tags: [search]
+      summary: First stage of a venue search
+      description: >-
+        Runs a single Google Text Search and returns the list immediately.
+        Venues that already have an AI insight include it; the ones listed in
+        pendingInsights should be requested from /search/insights.
+      security:
+        - firebaseAuth: []
+          appCheck: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "200":
+          description: Venues
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResponse"
+        "401":
+          description: Sign-in or App Check required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Daily free searches used up and the result is not cached
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaExceededResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Google Places is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /search/insights:
+    post:
+      operationId: getVenueInsights
+      tags: [search]
+      summary: Second stage of a venue search
+      description: >-
+        Returns AI insights for up to 5 venues, analyzing the ones that have
+        no stored insight. Venues that turn out not to match the filters are
+        listed in excludedPlaceIds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InsightsRequest"
+      responses:
+        "200":
+          description: Venues with insights
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InsightsResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Google Places is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /places/{placeId}:
+    get:
+      operationId: getVenue
+      tags: [search]
+      summary: A single venue with its insight
+      description: Used when a venue page is opened outside a search; analyzes the venue if needed.
+      parameters:
+        - name: placeId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 300
+      responses:
+        "200":
+          description: Venue
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Venue"
+        "502":
+          description: Google Places is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /me/quota:
+    get:
+      operationId: getMyQuota
+      tags: [search]
+      summary: Today's search quota of the signed-in user
+      security:
+        - firebaseAuth: []
+      responses:
+        "200":
+          description: Quota
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuotaStatus"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Accounts are not configured on this server
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /gurme/lists/{id}/claim:
+    post:
+      operationId: claimGurmeList
+      tags: [gurme]
+      summary: Attach a list created with a device owner key to the signed-in account
+      parameters:
+        - $ref: "#/components/parameters/GurmeListId"
+      security:
+        - firebaseAuth: []
+          ownerKeyHeader: []
+      responses:
+        "200":
+          description: List now owned by the account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GurmeList"
+        "401":
+          description: Sign-in and owner key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: List not found or owner key does not match
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /gurme/lists/{id}/report:
+    post:
+      operationId: reportGurmeList
+      tags: [gurme]
+      summary: Report a shared list for moderator review
+      description: One report per account and list; a repeated report updates nothing and still succeeds.
+      parameters:
+        - $ref: "#/components/parameters/GurmeListId"
+      security:
+        - firebaseAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListReportInput"
+      responses:
+        "202":
+          description: Report received
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListReportReceived"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Sign-in required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: List not found or not shared
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/me:
+    get:
+      operationId: getAdminStatus
+      tags: [admin]
+      summary: Whether the caller has administrator rights
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      responses:
+        "200":
+          description: Administrator status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminStatus"
+  /admin/overview:
+    get:
+      operationId: getAdminOverview
+      tags: [admin]
+      summary: Users, usage, budgets, lists, open reports and server state
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPayload"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/users:
+    get:
+      operationId: listAdminUsers
+      tags: [admin]
+      summary: Users, most recently seen first
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [all, blocked, active]
+        - name: limit
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPayload"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/users/{userId}:
+    get:
+      operationId: getAdminUser
+      tags: [admin]
+      summary: One user's usage, recent searches and lists
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPayload"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/users/{userId}/bonus:
+    post:
+      operationId: grantAdminBonus
+      tags: [admin]
+      summary: Grant extra searches for today
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminBonusInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPayload"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/users/{userId}/search:
+    post:
+      operationId: setUserSearch
+      tags: [admin]
+      summary: Block or allow a user's searches
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserPublishingInput"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPayload"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/searches:
+    get:
+      operationId: listAdminSearches
+      tags: [admin]
+      summary: Recent searches and top queries and cities (7 days)
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      parameters:
+        - name: outcome
+          in: query
+          schema:
+            type: string
+            enum: [ok, cached, quota, budget, blocked, error]
+        - name: limit
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPayload"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/lists:
+    get:
+      operationId: listAdminLists
+      tags: [admin]
+      summary: Shared lists for review
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      parameters:
+        - name: filter
+          in: query
+          schema:
+            type: string
+            enum: [shared, public, unlisted, hidden, all]
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminPayload"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/list-reports:
+    get:
+      operationId: listListReportsForReview
+      tags: [admin]
+      summary: Reported lists grouped by list, open reports first
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, all]
+            default: open
+      responses:
+        "200":
+          description: Reported lists
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ReportedList"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/lists/{id}/moderation:
+    post:
+      operationId: moderateGurmeList
+      tags: [admin]
+      summary: Hide or restore a list, or dismiss its open reports
+      parameters:
+        - $ref: "#/components/parameters/GurmeListId"
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ListModerationInput"
+      responses:
+        "200":
+          description: Updated list state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReportedList"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: List not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /admin/users/{userId}/publishing:
+    post:
+      operationId: setUserPublishing
+      tags: [admin]
+      summary: Block or allow a user from publishing lists
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      security:
+        - firebaseAuth: []
+        - adminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserPublishingInput"
+      responses:
+        "200":
+          description: Updated publishing state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserPublishingInput"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Administrator rights required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /gurme/lists:
+    get:
+      operationId: listGurmeLists
+      tags: [gurme]
+      summary: List public lists or lists owned by the bearer key
+      description: Without authorization, returns public lists only. With an owner bearer key, returns all lists belonging to that owner.
+      security:
+        - ownerBearerAuth: []
+        - ownerKeyHeader: []
+        - firebaseAuth: []
+        - {}
+      responses:
+        "200":
+          description: Lists visible to the caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GurmeListCollection"
+        "500":
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createGurmeList
+      tags: [gurme]
+      summary: Create a user-curated list
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GurmeListInput"
+      responses:
+        "201":
+          description: List created; ownerKey is returned only in this response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GurmeListCreated"
+        "400":
+          description: Invalid list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: List identifier conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /gurme/lists/{id}:
+    get:
+      operationId: getGurmeList
+      tags: [gurme]
+      summary: Get a public or unlisted list, or an owned private list
+      parameters:
+        - $ref: "#/components/parameters/GurmeListId"
+      security:
+        - ownerBearerAuth: []
+        - ownerKeyHeader: []
+        - firebaseAuth: []
+        - {}
+      responses:
+        "200":
+          description: List details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GurmeList"
+        "404":
+          description: List not found or not visible to caller
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    put:
+      operationId: updateGurmeList
+      tags: [gurme]
+      summary: Update a list owned by the bearer key
+      security:
+        - ownerBearerAuth: []
+        - ownerKeyHeader: []
+        - firebaseAuth: []
+      parameters:
+        - $ref: "#/components/parameters/GurmeListId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GurmeListUpdate"
+      responses:
+        "200":
+          description: List updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GurmeList"
+        "400":
+          description: Invalid list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Owner bearer key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: List not found or not owned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteGurmeList
+      tags: [gurme]
+      summary: Delete a list owned by the bearer key
+      security:
+        - ownerBearerAuth: []
+        - ownerKeyHeader: []
+        - firebaseAuth: []
+      parameters:
+        - $ref: "#/components/parameters/GurmeListId"
+      responses:
+        "204":
+          description: List deleted
+        "401":
+          description: Owner bearer key required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: List not found or not owned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Database error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /feedback/{installationId}:
+    get:
+      operationId: getAnonymousFeedback
+      tags: [feedback]
+      summary: Get feedback belonging to an anonymous app installation
+      parameters:
+        - $ref: "#/components/parameters/InstallationId"
+      responses:
+        "200":
+          description: Stored reactions and check-ins
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnonymousFeedback"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /feedback/reaction:
+    put:
+      operationId: saveVenueReaction
+      tags: [feedback]
+      summary: Create, update, or remove a venue reaction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueReactionInput"
+      responses:
+        "200":
+          description: Reaction state saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /feedback/checkins:
+    post:
+      operationId: saveCheckin
+      tags: [feedback]
+      summary: Save an anonymous venue check-in and note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckinInput"
+      responses:
+        "201":
+          description: Check-in saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackWriteResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /feedback/reports:
+    post:
+      operationId: reportVenue
+      tags: [feedback]
+      summary: Report incorrect information about a venue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueReportInput"
+      responses:
+        "200":
+          description: Report accepted or already recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueReportResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Too many reports
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /feedback/admin/reports:
+    get:
+      operationId: listVenueReportsForReview
+      tags: [admin]
+      summary: List open venue reports for moderator review
+      security:
+        - adminBearerAuth: []
+      parameters:
+        - name: placeId
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+        - name: reportType
+          in: query
+          schema:
+            $ref: "#/components/schemas/VenueReportType"
+      responses:
+        "200":
+          description: Open reports grouped by venue and report type
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueReportReviewQueue"
+        "401":
+          description: Administrator authorization required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Administrator authorization is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /feedback/admin/reports/review:
+    post:
+      operationId: reviewVenueReports
+      tags: [admin]
+      summary: Accept or reject all open reports for a venue and report type
+      security:
+        - adminBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueReportReviewInput"
+      responses:
+        "200":
+          description: Reports reviewed and audit history stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueReportReviewResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Administrator authorization required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: No matching open reports
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Administrator authorization is not configured
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    adminBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+    ownerBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Owner key
+    ownerKeyHeader:
+      type: apiKey
+      in: header
+      name: X-Owner-Key
+      description: List owner key; use this header when Authorization carries a Firebase ID token.
+    firebaseAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Firebase ID token (JWT)
+      description: >-
+        Required for search, feedback and quota endpoints when the server has
+        FIREBASE_PROJECT_ID; optional otherwise.
+    appCheck:
+      type: apiKey
+      in: header
+      name: X-Firebase-AppCheck
+  parameters:
+    GurmeListId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    InstallationId:
+      name: installationId
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 100
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    GurmeListVisibility:
+      type: string
+      enum: [private, unlisted, public]
+    GurmeListItem:
+      type: object
+      additionalProperties: false
+      required: [placeId, name, area, category, note]
+      properties:
+        placeId:
+          type: string
+          minLength: 1
+          maxLength: 255
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        area:
+          type: string
+          maxLength: 120
+        category:
+          type: string
+          maxLength: 80
+        note:
+          type: string
+          maxLength: 500
+    GurmeListInput:
+      type: object
+      additionalProperties: false
+      required: [title, description, authorName, visibility, items]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 2000
+        authorName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        visibility:
+          $ref: "#/components/schemas/GurmeListVisibility"
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/GurmeListItem"
+    GurmeListUpdate:
+      type: object
+      additionalProperties: false
+      required: [title, description, authorName, visibility, items]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          maxLength: 2000
+        authorName:
+          type: string
+          minLength: 1
+          maxLength: 100
+        visibility:
+          $ref: "#/components/schemas/GurmeListVisibility"
+        items:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/GurmeListItem"
+    GurmeList:
+      type: object
+      additionalProperties: false
+      required: [id, title, description, authorName, visibility, items, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        authorName:
+          type: string
+        visibility:
+          $ref: "#/components/schemas/GurmeListVisibility"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GurmeListItem"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    GurmeListCreated:
+      type: object
+      additionalProperties: false
+      required: [id, title, description, authorName, visibility, items, createdAt, updatedAt, ownerKey]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        authorName:
+          type: string
+        visibility:
+          $ref: "#/components/schemas/GurmeListVisibility"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GurmeListItem"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        ownerKey:
+          type: string
+          minLength: 64
+          maxLength: 64
+          description: Server-generated 32-byte secret, returned once only.
+    GurmeListCollection:
+      type: array
+      items:
+        $ref: "#/components/schemas/GurmeList"
+    AutocompleteSuggestion:
+      type: object
+      required: [placeId, description, mainText]
+      properties:
+        placeId:
+          type: string
+        description:
+          type: string
+          description: Full text, e.g. "Kadıköy, İstanbul, Türkiye"
+        mainText:
+          type: string
+          description: Main part, e.g. "Kadıköy"
+    AutocompleteResponse:
+      type: object
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AutocompleteSuggestion"
+    SearchFilters:
+      type: object
+      additionalProperties: false
+      description: >-
+        Filter panel. Alcohol uses Google data where available; helal,
+        gluten-free and celiac are estimated from reviews and must be shown
+        as unverified.
+      required: [alcoholFree, helal, glutenFree, celiac]
+      properties:
+        alcoholFree:
+          type: boolean
+        helal:
+          type: boolean
+          description: Implies alcoholFree.
+        glutenFree:
+          type: boolean
+        celiac:
+          type: boolean
+    SearchRequest:
+      type: object
+      additionalProperties: false
+      required: [city, query]
+      properties:
+        city:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: City or district text, e.g. "Kadıköy, İstanbul"
+        cityPlaceId:
+          type: string
+          maxLength: 300
+          description: Google place_id of the selected autocomplete suggestion
+        query:
+          type: string
+          minLength: 1
+          maxLength: 120
+          description: What to eat or drink, e.g. "lahmacun"
+        filters:
+          $ref: "#/components/schemas/SearchFilters"
+    InsightsRequest:
+      type: object
+      additionalProperties: false
+      required: [placeIds]
+      properties:
+        placeIds:
+          type: array
+          minItems: 1
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+            maxLength: 300
+        filters:
+          $ref: "#/components/schemas/SearchFilters"
+    Signal:
+      type: string
+      enum: ["yes", "no", "unknown"]
+    PlaceFeatures:
+      type: object
+      required: [alcohol, helal, glutenFree, celiacSafe]
+      properties:
+        alcohol:
+          $ref: "#/components/schemas/Signal"
+        helal:
+          $ref: "#/components/schemas/Signal"
+        glutenFree:
+          $ref: "#/components/schemas/Signal"
+        celiacSafe:
+          $ref: "#/components/schemas/Signal"
+    FilterStatus:
+      type: string
+      description: >-
+        none: no filter is active. likely: every filter signal is "yes".
+        unverified: some signals are unknown.
+      enum: [none, likely, unverified]
+    PlaceInsight:
+      type: object
+      required: [summary, whyGo, warnings, vibeTags, highlights, analyzedAt]
+      properties:
+        summary:
+          type: string
+        whyGo:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        vibeTags:
+          type: array
+          items:
+            type: string
+        highlights:
+          type: array
+          items:
+            type: string
+        analyzedAt:
+          type: string
+          format: date-time
+    GeoPoint:
+      type: object
+      required: [lat, lng]
+      properties:
+        lat:
+          type: number
+        lng:
+          type: number
+    VenueCategory:
+      type: string
+      enum: [classic, option, discovery]
+    Venue:
+      type: object
+      required: [placeId, name, address, rating, totalRatings, features, filterStatus, insight, needsVerification]
+      properties:
+        placeId:
+          type: string
+        name:
+          type: string
+        address:
+          type: string
+        rating:
+          type: number
+        totalRatings:
+          type: integer
+        location:
+          $ref: "#/components/schemas/GeoPoint"
+        googleMapsUri:
+          type: string
+        category:
+          $ref: "#/components/schemas/VenueCategory"
+        features:
+          $ref: "#/components/schemas/PlaceFeatures"
+        filterStatus:
+          $ref: "#/components/schemas/FilterStatus"
+        insight:
+          description: null until the venue is analyzed
+          oneOf:
+            - $ref: "#/components/schemas/PlaceInsight"
+            - type: "null"
+        needsVerification:
+          type: boolean
+          description: Flagged by community reports
+    SearchResponse:
+      type: object
+      required: [city, query, filters, venues, limitedResults, categorized, fromCache, pendingInsights]
+      properties:
+        city:
+          type: string
+        query:
+          type: string
+        filters:
+          $ref: "#/components/schemas/SearchFilters"
+        venues:
+          type: array
+          items:
+            $ref: "#/components/schemas/Venue"
+        limitedResults:
+          type: boolean
+          description: Quality threshold was relaxed to show at least 2 venues
+        categorized:
+          type: boolean
+          description: Venues carry classic/option/discovery categories
+        fromCache:
+          type: boolean
+          description: Served from cache; no Google request was made
+        pendingInsights:
+          type: array
+          description: Up to 3 placeIds to request from /search/insights
+          items:
+            type: string
+        quota:
+          $ref: "#/components/schemas/QuotaStatus"
+    InsightsResponse:
+      type: object
+      required: [venues, excludedPlaceIds]
+      properties:
+        venues:
+          type: array
+          items:
+            $ref: "#/components/schemas/Venue"
+        excludedPlaceIds:
+          type: array
+          description: Venues that do not match the filters once analyzed
+          items:
+            type: string
+    ReactionType:
+      type: string
+      enum: [liked, disliked]
+    VenueReactionInput:
+      type: object
+      required: [installationId, placeId, venueName]
+      properties:
+        installationId:
+          type: string
+          minLength: 16
+          maxLength: 100
+        placeId:
+          type: string
+          minLength: 1
+          maxLength: 255
+        venueName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        reaction:
+          oneOf:
+            - $ref: "#/components/schemas/ReactionType"
+            - type: "null"
+    CheckinInput:
+      type: object
+      required: [id, installationId, placeId, venueName, tags, note, checkedAt]
+      properties:
+        id:
+          type: string
+          minLength: 10
+          maxLength: 100
+        installationId:
+          type: string
+          minLength: 16
+          maxLength: 100
+        placeId:
+          type: string
+          minLength: 1
+          maxLength: 255
+        venueName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        tags:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            minLength: 1
+            maxLength: 50
+        note:
+          type: string
+          maxLength: 300
+        checkedAt:
+          type: string
+    StoredCheckin:
+      allOf:
+        - $ref: "#/components/schemas/CheckinInput"
+    AnonymousFeedback:
+      type: object
+      required: [reactions, checkins]
+      properties:
+        reactions:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ReactionType"
+        checkins:
+          type: array
+          items:
+            $ref: "#/components/schemas/StoredCheckin"
+    FeedbackWriteResponse:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+    VenueReportType:
+      type: string
+      enum: [serves_alcohol, closed, wrong_info, irrelevant]
+    VenueReportInput:
+      type: object
+      required: [installationId, placeId, venueName, reportType]
+      properties:
+        installationId:
+          type: string
+          minLength: 16
+          maxLength: 100
+        placeId:
+          type: string
+          minLength: 1
+          maxLength: 255
+        venueName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        reportType:
+          $ref: "#/components/schemas/VenueReportType"
+        sourceSearchId:
+          type: ["string", "null"]
+          maxLength: 100
+        sourceResultId:
+          type: ["string", "null"]
+          maxLength: 100
+    VenueReportResponse:
+      type: object
+      required: [success, alreadyReported, reportCount, verificationRequired]
+      properties:
+        success:
+          type: boolean
+        alreadyReported:
+          type: boolean
+        reportCount:
+          type: integer
+        verificationRequired:
+          type: boolean
+    VenueReportStatus:
+      type: string
+      enum: [open, accepted, rejected]
+    VenueReportReviewQueueItem:
+      type: object
+      required:
+        [placeId, venueName, reportType, reportCount, firstReportedAt, lastReportedAt, reports]
+      properties:
+        placeId:
+          type: string
+        venueName:
+          type: string
+        reportType:
+          $ref: "#/components/schemas/VenueReportType"
+        reportCount:
+          type: integer
+        firstReportedAt:
+          type: string
+          format: date-time
+        lastReportedAt:
+          type: string
+          format: date-time
+        reports:
+          type: array
+          items:
+            type: object
+            required: [id, installationId, createdAt]
+            properties:
+              id:
+                type: string
+              installationId:
+                type: string
+              createdAt:
+                type: string
+                format: date-time
+    VenueReportReviewQueue:
+      type: object
+      required: [groups]
+      properties:
+        groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/VenueReportReviewQueueItem"
+    VenueReportReviewInput:
+      type: object
+      required: [placeId, reportType, decision, reviewedBy]
+      properties:
+        placeId:
+          type: string
+          minLength: 1
+          maxLength: 255
+        reportType:
+          $ref: "#/components/schemas/VenueReportType"
+        decision:
+          type: string
+          enum: [accepted, rejected]
+        reviewedBy:
+          type: string
+          minLength: 1
+          maxLength: 100
+        note:
+          type: string
+          maxLength: 500
+    VenueReportReviewResponse:
+      type: object
+      required: [success, affectedReportCount, reviewedAt]
+      properties:
+        success:
+          type: boolean
+        affectedReportCount:
+          type: integer
+        reviewedAt:
+          type: string
+          format: date-time
+    ListReportReason:
+      type: string
+      enum: [spam, offensive, misleading, other]
+    ListReportInput:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          $ref: "#/components/schemas/ListReportReason"
+        note:
+          type: string
+          maxLength: 500
+    ListReportReceived:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+    AdminStatus:
+      type: object
+      required: [admin]
+      properties:
+        admin:
+          type: boolean
+    ReportedList:
+      type: object
+      required: [id, title, authorName, visibility, itemCount, hidden, ownerUserId, ownerBlocked, openReports, totalReports, reasons, notes, lastReportedAt]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        authorName:
+          type: string
+        visibility:
+          type: string
+          enum: [private, unlisted, public]
+        itemCount:
+          type: integer
+        hidden:
+          type: boolean
+        ownerUserId:
+          type: string
+          nullable: true
+        ownerBlocked:
+          type: boolean
+        openReports:
+          type: integer
+        totalReports:
+          type: integer
+        reasons:
+          type: object
+          additionalProperties:
+            type: integer
+        notes:
+          type: array
+          items:
+            type: string
+        lastReportedAt:
+          type: string
+          format: date-time
+    ListModerationInput:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [hide, restore, dismiss]
+    UserPublishingInput:
+      type: object
+      required: [blocked]
+      properties:
+        blocked:
+          type: boolean
+    AdminPayload:
+      type: object
+      description: Admin panel payload; shape documented in artifacts/api-server/src/routes/admin.ts.
+      additionalProperties: true
+    AdminBonusInput:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          maximum: 20
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        details:
+          type: string
+        code:
+          type: string
+          description: >-
+            Machine-readable reason, e.g. auth_required, auth_invalid,
+            app_check_required, quota_exceeded, insight_quota_exceeded
+      required:
+        - error
+    QuotaStatus:
+      type: object
+      required: [searchesUsed, searchesLimit, resetsAt]
+      properties:
+        searchesUsed:
+          type: integer
+          description: Fresh (non-cached) searches today, Europe/Istanbul
+        searchesLimit:
+          type: integer
+          description: Free daily searches plus rewarded bonus searches
+        resetsAt:
+          type: string
+          format: date-time
+    QuotaExceededResponse:
+      type: object
+      required: [error, code, quota]
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        quota:
+          $ref: "#/components/schemas/QuotaStatus"

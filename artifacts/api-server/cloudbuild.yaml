@@ -1,0 +1,7 @@
+# Sunucu imajı Cloud Build'de derlenir (depo kökünden):
+#   gcloud builds submit --config artifacts/api-server/cloudbuild.yaml \
+#     --substitutions _IMAGE=europe-west3-docker.pkg.dev/gurme-511606/gurme/api:<etiket> .
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-f", "artifacts/api-server/Dockerfile", "-t", "${_IMAGE}", "."]
+images: ["${_IMAGE}"]

@@ -1,0 +1,26 @@
+rules_version = '2';
+
+// Bulut yedeği: users/{uid}/journal.json ve users/{uid}/photos/{ad}.
+// Her kullanıcı yalnızca kendi klasörünü okuyup yazabilir.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Okuma, fotoğrafların listelenmesini (listAll) de kapsar.
+    match /users/{uid}/{allPaths=**} {
+      allow read, delete: if isOwner(uid);
+    }
+    match /users/{uid}/journal.json {
+      allow write: if isOwner(uid)
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType == 'application/json';
+    }
+    match /users/{uid}/photos/{name} {
+      allow write: if isOwner(uid)
+        && request.resource.size < 15 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

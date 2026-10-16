@@ -1,0 +1,4 @@
+# Üretilmiş kod; uyarılar üretici şablonundan geliyor.
+analyzer:
+  exclude:
+    - lib/**

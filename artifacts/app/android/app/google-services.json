@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "816165382305",
+    "project_id": "gurme-511606",
+    "storage_bucket": "gurme-511606.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:816165382305:android:2b26fec785fec1fd7068e0",
+        "android_client_info": {
+          "package_name": "com.gurme.gurme"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "816165382305-kl8umsfi568cr50rr2pi028snqerieo0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBbUs8gnHlnGNy-6j9VXW_p0VsfClg_5Dc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "816165382305-kl8umsfi568cr50rr2pi028snqerieo0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "816165382305-qa7j2fhb1tffde7o5vvqm2blqqqu7ikr.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.gurme.gurme"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

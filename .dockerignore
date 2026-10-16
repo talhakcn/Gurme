@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.expo
+.git
+.local
+.cache
+artifacts/mobile
+*.tsbuildinfo
+.env
+.env.*

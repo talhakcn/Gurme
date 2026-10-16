@@ -1,0 +1,6 @@
+# Bu dosyalar elle yönetilir; codegen-dart.sh bunların üzerine yazmaz.
+README.md
+.gitignore
+analysis_options.yaml
+test/**
+doc/**

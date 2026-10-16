@@ -1,0 +1,16 @@
+# Cloud Build'e yalnızca sunucunun derlenmesi için gerekenler gider
+# (.dockerignore ile aynı, ayrıca uygulamalar ve yerel araç klasörleri).
+#!include:.gitignore
+**/node_modules
+**/dist
+**/.expo
+.git
+.local
+.cache
+.claude
+artifacts/mobile
+artifacts/app
+.tasarim-taslak
+*.tsbuildinfo
+.env
+.env.*
