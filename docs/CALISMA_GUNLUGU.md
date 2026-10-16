@@ -942,3 +942,7 @@ Kurulum (Google Cloud, Firebase, Neon, Secret Manager) Ekim 2026'da tamamlandı.
 - `pnpm` PATH'te yok; `corepack pnpm` kullanılıyor.
 - macOS'ta `timeout` komutu yok.
 - Testte gerçek dosya okuyan font yükleme `testWidgets` içinde takılıyor; `setUpAll` içinde yapılmalı.
+
+### GitHub'a yükleme
+
+- **Proje GitHub'a yüklendi.** `gurme-main.zip` içindeki 560 dosya boş `talhakcn/Gurme` deposunun `main` dalına tek commit olarak gönderildi. Yüklemeden önce `.env`, anahtar ve gizli bilgi dosyası arandı, bulunmadı. Depo daha sonra kullanıcı tarafından herkese açık yapıldı. (`01c6525`)
